@@ -1,70 +1,71 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
+	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/PuerkitoBio/goquery"
-	"github.com/geziyor/geziyor"
-	"github.com/geziyor/geziyor/client"
-	"github.com/geziyor/geziyor/export"
+	"github.com/gocolly/colly"
 )
 
-func main() {
-	var m map[string]interface{}
-	data := []byte("")
-	err := json.Unmarshal(data, &m)
-	if err != nil {
-
-	}
-	var wg sync.WaitGroup
-
-	for i := 1; i < 200000; i++ {
-		sayfa := strconv.Itoa(i)
-		wg.Add(1)
-		go crawl(sayfa, &wg)
-		time.Sleep(1 / 2)
-	}
-
-	wg.Wait()
-
+type Kitap struct {
+	Title string
+	Desc  string
+	Isbn  string
+	Cats  []string
 }
 
-func crawl(sayfa string, wg *sync.WaitGroup) {
-	defer wg.Done()
-	geziyor.NewGeziyor(&geziyor.Options{
-		StartURLs:                   []string{"https://www.kitapyurdu.com/kitap/app/" + sayfa + ".html"},
-		ConcurrentRequests:          3,
-		ConcurrentRequestsPerDomain: 3,
-		ParseFunc: func(g *geziyor.Geziyor, r *client.Response) {
-			r.HTMLDoc.Find("#productDetail-" + sayfa + " > div.product-info.grid_9.alpha > div:nth-child(3) > div.book-cover.box-shadow.mg-b-20").Each(func(_ int, s *goquery.Selection) {
-				title := s.Find("h1.product-heading").Text()
-				if len(title) < 3 {
-					fmt.Printf("kalınan sayfa i : %s", sayfa)
-					os.Exit(1)
-				}
-				tempDesc := s.Find("div#description_text").Text()
-				desc := strings.Trim(tempDesc, "\t \n \r")
-				isbn := s.Find("span[itemprop=\"isbn\"]").Text()
-				tempCats := s.Find("div.product-info.grid_9.alpha > div:nth-child(3) > div.book-cover.box-shadow.mg-b-20 > div.grid_6.omega.alpha.book-right > div > div:nth-child(7) > a:nth-child(2)").Text()
-				cats := strings.Split(tempCats, "»")
-				geziyor.NewGeziyor(&geziyor.Options{
-					StartURLs:                   []string{"https://www.kitapyurdu.com/kitap/app/" + sayfa + ".html"},
-					ConcurrentRequests:          3,
-					ConcurrentRequestsPerDomain: 3})
-				g.Exports <- map[string]interface{}{
-					"title":       title,
-					"description": desc,
-					"isbn":        isbn,
-					"cats":        cats,
-				}
-			})
-		},
-		Exporters: []export.Exporter{&export.JSON{}},
-	}).Start()
+//curl -XPOST  -H 'Content-type: application/json' -d '{"deneme" : "hello" }'
+func main() {
+	kitap := Kitap{}
+
+	for i := 1; i < 1000000 i++ {
+		sayfa := strconv.Itoa(i)
+		getit(sayfa, &kitap)
+
+	}
+}
+
+func getit(sayfa string, kitap *Kitap) {
+	url := "http://localhost:9200/kitapyurdu/doc"
+
+	fmt.Printf("requested %s", sayfa)
+	c := colly.NewCollector()
+
+	c.OnHTML("h1.product-heading", func(e *colly.HTMLElement) {
+		if len(e.Text) < 3 {
+			log.Fatalf("sayfa yok %s",sayfa)
+		}
+		kitap.Title = e.Text
+	})
+	c.OnHTML("div#description_text", func(e *colly.HTMLElement) {
+		tempDesc := e.Text
+		desc := strings.Trim(tempDesc, "\t \n \r")
+		kitap.Desc = desc
+	})
+	c.OnHTML("span[itemprop=\"isbn\"]", func(e *colly.HTMLElement) {
+		kitap.Isbn = e.Text
+	})
+	c.OnHTML("div.product-info.grid_9.alpha > div:nth-child(3) > div.book-cover.box-shadow.mg-b-20 > div.grid_6.omega.alpha.book-right > div > div:nth-child(7) > a:nth-child(2)", func(e *colly.HTMLElement) {
+		tempCats := e.Text
+		cats := strings.Split(tempCats, "»")
+		kitap.Cats = cats
+	})
+
+	c.OnScraped(func(r *colly.Response) {
+		jsonStr, _ := json.Marshal(kitap)
+
+		req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, _ := client.Do(req)
+		defer resp.Body.Close()
+
+	})
+
+	c.Visit("https://www.kitapyurdu.com/kitap/app/" + sayfa + ".html")
 }
