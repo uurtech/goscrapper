@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +23,7 @@ type Kitap struct {
 func main() {
 	kitap := Kitap{}
 
-	for i := 1; i < 1000000 i++ {
+	for i := 1; i < 1000000; i++ {
 		sayfa := strconv.Itoa(i)
 		getit(sayfa, &kitap)
 
@@ -37,7 +38,7 @@ func getit(sayfa string, kitap *Kitap) {
 
 	c.OnHTML("h1.product-heading", func(e *colly.HTMLElement) {
 		if len(e.Text) < 3 {
-			log.Fatalf("sayfa yok %s",sayfa)
+			log.Fatalf("sayfa yok %s", sayfa)
 		}
 		kitap.Title = e.Text
 	})
